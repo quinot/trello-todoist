@@ -1,10 +1,10 @@
 import requests
 import pika
 import json
+import os
 
-
-API_KEY = '-'
-API_TOKEN = '-'
+API_KEY = os.getenv("TRELLO_API_KEY")
+API_TOKEN = os.getenv("TRELLO_API_TOKEN")
 QUEUE = 'trello-cards'
 
 
