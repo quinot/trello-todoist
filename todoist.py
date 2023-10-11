@@ -2,50 +2,42 @@ import requests
 import json
 import pika
 import time
+import os
+from todoist_api_python.api import TodoistAPI
 
-API_TOKEN = '-'
+API_TOKEN = os.getenv("TODOIST_API_TOKEN")
 QUEUE = 'trello-cards'
 
 class TodoistClient(object):
 
     def __init__(self, api_token):
-        self._api_token = api_token
+        self._api = TodoistAPI(api_token)
         self._project_cache = {}
+        self._project_names = { p.name: p for p in self._api.get_projects() }
+        print(f"Projects: {self._project_names}")
 
     def create_project(self, name, id):
         if id in self._project_cache:
             return self._project_cache[id]
 
+        if name in self._project_names:
+            self._project_cache[id] = self._project_names[name].id
+            return self._project_cache[id]
+
         data = {'name': name}
-        resp = self._post('/projects', data, id)
+        resp = self._api.add_project(**data)
         if resp is not None:
-            self._project_cache[id] =  resp['id']
+            self._project_cache[id] =  resp.id
             return self._project_cache[id]
 
         return None
         
     def create_task(self, task, id):
-        resp = self._post('/tasks', task)
-        return resp['id']
+        resp = self._api.add_task(**task)
+        return resp.id
 
     def create_comment(self, comment):
-        self._post('/comments', comment)
-
-    def _post(self, path, data, request_id=None):
-        headers = {'Authorization': f'Bearer {self._api_token}'}
-
-        if request_id is not None:
-            headers['X-Request-Id'] = request_id
-
-        r = requests.post('https://beta.todoist.com/API/v8' + path, 
-                          headers=headers,
-                          json=data)
-
-        if r.status_code == 200:
-            return r.json()
-
-        print(r.text)
-        return None
+        self._api.add_comment(**comment)
 
 def handle_card(todoist):
     def handle(ch, method, properties, body):
@@ -56,8 +48,8 @@ def handle_card(todoist):
         try:
             create_on_todoist(todoist, message)
             ch.basic_ack(delivery_tag=method.delivery_tag)
-        except:
-            print('An error has ocurred')
+        except Exception as e:
+            print('An error has ocurred', e)
 
     return handle
 
@@ -85,7 +77,7 @@ if __name__ == '__main__':
 
     channel.queue_declare(queue=QUEUE, durable=True)
 
-    channel.basic_consume(handle_card(todoist), queue=QUEUE)
+    channel.basic_consume(QUEUE, handle_card(todoist))
 
     print("[*] Waiting for messages. To exit press CTRL+C")
     channel.start_consuming()
