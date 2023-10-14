@@ -69,14 +69,7 @@ def trello_lists_to_migrate(trello, board):
 
 
 def trello_card_to_todoist_comments(trello, card):
-    comment = f"*From [Trello]({card['shortUrl']})*"
-    if card['desc'] is not None and card['desc'] != '':
-        comment += f"\n\n{card['desc']}"
-
-    yield {
-        "content": comment,
-        "posted_at": card["dateLastActivity"],
-    }
+    # Attachments
 
     if card['attachments'] is not None:
         for attachment in card['attachments']:
@@ -86,7 +79,7 @@ def trello_card_to_todoist_comments(trello, card):
                     "posted_at": attachment["date"],
                 }
 
-    # Get comments
+    # Card comments
 
     for action in trello.actions_from_card(card['id']):
         if action['type'] == 'commentCard':
@@ -131,6 +124,8 @@ def main(board):
                 'id': card['id'],
                 'name': card['name'],
                 'due': card['due'],
+                'desc': card['desc'],
+                'origin': f"*From [Trello]({card['shortUrl']})*",
                 'list_name': name,
                 'list_id': id,
                 'comments': list(trello_card_to_todoist_comments(trello, card)),

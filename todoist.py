@@ -22,12 +22,12 @@ class TodoistClient(object):
             "name": defaultdict(dict),
         }
         projects = self._api.get_projects()
-        self._cache["name"]["project"] = {project.name: project for project in projects}
+        self._cache["name"]["project"] = {p.name: p for p in projects}
 
         if lists_as_sections:
-            self._project = self._cache["name"]["project"][project]
-            sections = self._api.get_sections(project_id=self._project.id)
-            self._cache["name"]["section"] = {section.name: section for section in sections}
+            self._project_id = self.find_project(project, None)
+            sections = self._api.get_sections(project_id=self._project_id)
+            self._cache["name"]["section"] = {s.name: s for s in sections}
 
     def _find_cached(self, category, name, id):
         for key_type, key in  {"id": id, "name": name}.items():
@@ -51,7 +51,7 @@ class TodoistClient(object):
     def find_section(self, name, id):
         section = self._find_cached("section", name, id)
         if section is None:
-            section = self._create_section(name, id, self._project.id)
+            section = self._create_section(name, id, self._project_id)
         return section.id
 
     def _create_section(self, name, id, project_id):
@@ -59,8 +59,9 @@ class TodoistClient(object):
         if self._dry_run:
             return Placeholder(id=f"S{id}")
         resp = self._api.add_section(**data)
+        print(f"Created section {resp}")
         if resp is not None:
-            self.add_cached("section", name, id, resp)
+            self._add_cached("section", name, id, resp)
             return resp
 
         return None
@@ -70,8 +71,9 @@ class TodoistClient(object):
         if self._dry_run:
             return Placeholder(id=f"S{id}")
         resp = self._api.add_project(**data)
+        print(f"Created project {resp}")
         if resp is not None:
-            self.add_cached("project", name, id, resp)
+            self._add_cached("project", name, id, resp)
             return resp
 
         return None
@@ -108,15 +110,20 @@ def create_on_todoist(todoist, message, list_as_sections, project):
     if list_as_sections:
         task_info = {
             "project_id": todoist.find_project(project, None),
-            "section_id": todoist.find_section(project, message['list_id'])
+            "section_id": todoist.find_section(message["list_name"], message['list_id'])
         }
     else:
         task_info = {
             "project_id": todoist.find_project(message['list_name'], message['list_id'])
         }
 
+    task_description = message["desc"] or ""
+    if task_description:
+        task_description += "\n\n"
+    task_description += message["origin"]
     task_info.update({
         'content': message['name'],
+        'description': task_description,
         'due_datetime': message['due']
     })
     task_id = todoist.create_task(task_info)
@@ -137,7 +144,7 @@ def create_on_todoist(todoist, message, list_as_sections, project):
 
 @click.command()
 @click.option('--dry-run', is_flag=True)
-@click.option('--lists-as-sections', is_flag=False, help='Map lists to sections instead of projects')
+@click.option('--lists-as-sections', is_flag=True, default=False, help='Map lists to sections instead of projects')
 @click.option('--project', type=str, default="Inbox", help='Project name (if mapping lists to sections)')
 def main(dry_run, lists_as_sections, project):
     todoist = TodoistClient(API_TOKEN, dry_run, lists_as_sections, project)
